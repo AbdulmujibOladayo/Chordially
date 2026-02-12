@@ -1,0 +1,21 @@
+{
+  "name": "@chordially/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "dev": "expo start",
+    "build": "expo export",
+    "lint": "echo 'No lint configured for @chordially/mobile'",
+    "test": "echo 'No tests configured for @chordially/mobile'"
+  },
+  "dependencies": {
+    "expo": "~50.0.15",
+    "react": "18.2.0",
+    "react-native": "0.73.6"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.45",
+    "typescript": "^5.5.4"
+  }
+}

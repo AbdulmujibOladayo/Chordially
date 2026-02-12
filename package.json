@@ -2,44 +2,15 @@
   "name": "chordially",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@8.15.6",
   "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build --turbopack",
-    "start": "next start",
-    "lint": "eslint",
-    "prepare": "husky"
-  },
-  "dependencies": {
-    "@hookform/resolvers": "^5.2.1",
-    "@tanstack/react-query": "^5.85.5",
-    "framer-motion": "^12.23.12",
-    "next": "15.5.0",
-    "next-auth": "^4.24.11",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
-    "react-hook-form": "^7.62.0",
-    "zod": "^4.1.5",
-    "zustand": "^5.0.8"
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "prisma": "pnpm --filter @chordially/api prisma"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3",
-    "@faker-js/faker": "^9.9.0",
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "15.5.0",
-    "eslint-config-prettier": "^10.1.8",
-    "husky": "^9.1.7",
-    "msw": "^2.10.5",
-    "prettier": "^3.6.2",
-    "tailwindcss": "^4",
-    "typescript": "^5"
-  },
-  "msw": {
-    "workerDirectory": [
-      "public"
-    ]
+    "turbo": "^2.0.9"
   }
 }

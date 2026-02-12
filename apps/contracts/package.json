@@ -1,0 +1,10 @@
+{
+  "name": "@chordially/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "cargo build",
+    "lint": "echo 'No lint configured for @chordially/contracts'",
+    "test": "echo 'No tests configured for @chordially/contracts'"
+  }
+}
