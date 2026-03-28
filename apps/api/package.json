@@ -1,0 +1,29 @@
+{
+  "name": "@chordially/api",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "lint": "echo 'No lint configured for @chordially/api'",
+    "prisma": "prisma",
+    "test": "echo 'No tests configured for @chordially/api'"
+  },
+  "dependencies": {
+    "@chordially/blockchain": "workspace:*",
+    "@chordially/types": "workspace:*",
+    "@prisma/client": "^6.3.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.11.30",
+    "prisma": "^6.3.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4"
+  }
+}
