@@ -11,9 +11,6 @@ importers:
       express:
         specifier: ^4.21.2
         version: 4.22.1
-      zod:
-        specifier: ^3.24.2
-        version: 3.25.76
     devDependencies:
       '@types/express':
         specifier: ^5.0.1
@@ -509,9 +506,6 @@ packages:
     resolution: {integrity: sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg==}
     engines: {node: '>= 0.8'}
 
-  zod@3.25.76:
-    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
-
 snapshots:
 
   '@esbuild/aix-ppc64@0.27.4':
@@ -979,5 +973,3 @@ snapshots:
   utils-merge@1.0.1: {}
 
   vary@1.1.2: {}
-
-  zod@3.25.76: {}
