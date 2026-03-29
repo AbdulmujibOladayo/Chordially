@@ -1,15 +1,15 @@
-import { Shell } from "../components/layout/shell";
+import { AdminShell } from "../components/layout/admin-shell";
 import { Card } from "../components/ui/card";
 
 export default function HomePage() {
   return (
-    <Shell
-      title="Session detail and tip intent flow."
-      subtitle="This branch adds the fan-facing session surface plus a draft tipping contract that can later hand off to real payment execution."
+    <AdminShell
+      title="Admin entry and overview shell."
+      subtitle="This branch adds a protected admin entry point and a lightweight overview page that can merge before real admin APIs exist."
     >
-      <Card title="Entry point">
-        <a className="button" href="/sessions/nova-chords">Open session detail</a>
+      <Card title="Quick start">
+        <a className="button" href="/admin/login">Open admin login</a>
       </Card>
-    </Shell>
+    </AdminShell>
   );
 }

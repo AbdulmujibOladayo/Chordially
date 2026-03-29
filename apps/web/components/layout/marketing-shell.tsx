@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 
-export function Shell({
+export function MarketingShell({
   title,
   subtitle,
   children
@@ -10,12 +10,12 @@ export function Shell({
   children: ReactNode;
 }) {
   return (
-    <main className="shell">
-      <header className="hero">
+    <main className="page-shell">
+      <section className="hero-panel">
         <p className="eyebrow">Chordially</p>
         <h1>{title}</h1>
-        <p className="hero__copy">{subtitle}</p>
-      </header>
+        <p className="hero-copy">{subtitle}</p>
+      </section>
       {children}
     </main>
   );
