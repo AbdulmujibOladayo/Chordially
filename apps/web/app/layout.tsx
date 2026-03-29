@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Chordially",
-  description: "Public landing and profile setup flow."
+  title: "Chordially Admin",
+  description: "Admin login and overview shell."
+  
 };
 
 export default function RootLayout({

@@ -1,20 +1,41 @@
-import { Shell } from "../../components/layout/shell";
+import { AdminShell } from "../../components/layout/admin-shell";
 import { Card } from "../../components/ui/card";
-import { requireRole } from "../../lib/guards";
+import { requireAdmin } from "../../lib/admin-auth";
+import { getAdminSummary } from "../../lib/admin-summary";
 
-export default function AdminPage() {
-  const user = requireRole(["admin"]);
+export default function AdminOverviewPage() {
+  requireAdmin();
+
+  const summary = getAdminSummary();
 
   return (
-    <Shell
-      title="Admin shell."
-      subtitle="A dedicated admin-only entry point with the same shared layout primitives used elsewhere in the app."
+    <AdminShell
+      title="Platform overview"
+      subtitle="A protected admin summary surface with seeded metrics for users, artists, sessions, and recent activity."
     >
-      <Card title="Access granted">
-        <p className="muted">
-          {user.name} can view admin-only routes. Artist and fan sessions are redirected to the unauthorized page.
-        </p>
+      <div className="grid grid--4">
+        <Card title="Users">
+          <p>{summary.totalUsers}</p>
+        </Card>
+        <Card title="Artists">
+          <p>{summary.totalArtists}</p>
+        </Card>
+        <Card title="Live sessions">
+          <p>{summary.activeSessions}</p>
+        </Card>
+        <Card title="Recent tips">
+          <p>{summary.recentTips}</p>
+        </Card>
+      </div>
+      <Card title="Latest accounts" >
+        {summary.recentUsers.map((user) => (
+          <div key={`${user.name}-${user.role}`}>
+            <span className="chip">{user.role}</span>
+            <span className="chip">{user.status}</span>
+            <p className="muted">{user.name}</p>
+          </div>
+        ))}
       </Card>
-    </Shell>
+    </AdminShell>
   );
 }
