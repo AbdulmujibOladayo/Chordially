@@ -12,6 +12,8 @@ export interface PreparedTipIntent {
   destination: string;
   memo: string;
   submitMode: "manual";
+  /** Present and true only when DEMO_MODE=true. Distinguishes mock from real records. */
+  mock?: true;
 }
 
 export interface StellarService {
