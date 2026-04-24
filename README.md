@@ -13,3 +13,14 @@
 - [Archive boundary](./docs/archive-boundary.md)
 - [Ownership map](./docs/ownership-map.md)
 - [Workspace scripts](./docs/workspace-scripts.md)
+- [Environment registry](./docs/environment-registry.md)
+- [Release process](./docs/release-process.md)
+- [Contribution guide](./CONTRIBUTING.md)
+
+## Local bootstrap
+
+Run the local bootstrap helper to copy env files, install dependencies, start local services, and verify the API environment contract:
+
+```bash
+node scripts/bootstrap-local.mjs
+```
