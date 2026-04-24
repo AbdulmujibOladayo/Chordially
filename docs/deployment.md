@@ -24,6 +24,12 @@ cp apps/web/.env.example apps/web/.env.local
 cp apps/mobile/.env.example apps/mobile/.env
 ```
 
+For local setup you can also run:
+
+```bash
+node scripts/bootstrap-local.mjs
+```
+
 ---
 
 ## Environment targets
@@ -32,7 +38,8 @@ cp apps/mobile/.env.example apps/mobile/.env
 
 - API: `http://localhost:3001`
 - Stellar: `testnet`
-- Database: local Postgres (see `apps/api/.env.example`)
+- Database: local Postgres via `docker compose`
+- Cache and realtime support: local Redis via `docker compose`
 
 ### Preview / Hosted demo
 
@@ -92,3 +99,13 @@ cd apps/mobile && pnpm start
 ```
 
 Ensure each app has its `.env` (or `.env.local`) populated before starting.
+
+## Local infrastructure
+
+Start local infrastructure with:
+
+```bash
+docker compose up -d postgres redis
+```
+
+The compose file intentionally matches the current API environment example, which still uses Postgres on this branch.
