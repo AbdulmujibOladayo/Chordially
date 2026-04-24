@@ -11,6 +11,9 @@
 
 - [Repository inventory](./docs/repository-inventory.md)
 - [Archive boundary](./docs/archive-boundary.md)
+- [API standards](./docs/api-standards.md)
+- [System context](./docs/system-context.md)
+- [Architecture decisions](./docs/decisions/README.md)
 - [Ownership map](./docs/ownership-map.md)
 - [Workspace scripts](./docs/workspace-scripts.md)
 - [Environment registry](./docs/environment-registry.md)
@@ -23,4 +26,10 @@ Run the local bootstrap helper to copy env files, install dependencies, start lo
 
 ```bash
 node scripts/bootstrap-local.mjs
+```
+
+Check repository readiness with:
+
+```bash
+node scripts/repo-health.mjs
 ```

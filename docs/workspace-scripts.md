@@ -12,6 +12,7 @@ Chordially uses a small shared script vocabulary across packages so contributors
 | `typecheck` | Run TypeScript type validation for the package |
 | `test` | Run the package's automated test suite or a documented no-op placeholder |
 | `check:env` | Validate required environment variables for runnable applications |
+| `repo:health` | Report repository readiness, env-file presence, and local service status |
 
 ## Current Policy
 
