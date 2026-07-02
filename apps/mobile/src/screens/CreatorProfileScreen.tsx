@@ -10,13 +10,11 @@ import {
   getCreatorBySlug,
   type CreatorProfile,
 } from "../services/creator-service"
-import { apiFetch } from "../services/api-client"
-import FollowCountSummary from "../components/FollowCountSummary"
 
 type LoadState =
   | { status: "loading" }
   | { status: "error"; message: string }
-  | { status: "ok"; profile: CreatorProfile; followCount: { followers: number; following: number } }
+  | { status: "ok"; profile: CreatorProfile }
 
 interface Props {
   slug: string
@@ -27,13 +25,8 @@ export default function CreatorProfileScreen({ slug }: Props) {
 
   const load = useCallback(async () => {
     try {
-      const [profile, followCount] = await Promise.all([
-        getCreatorBySlug(slug),
-        apiFetch<{ followers: number; following: number }>(
-          `/api/creators/${encodeURIComponent(slug)}/follow-count`
-        ),
-      ])
-      setState({ status: "ok", profile, followCount })
+      const profile = await getCreatorBySlug(slug)
+      setState({ status: "ok", profile })
     } catch {
       setState({ status: "error", message: "Creator not found" })
     }
@@ -59,7 +52,7 @@ export default function CreatorProfileScreen({ slug }: Props) {
     )
   }
 
-  const { profile, followCount } = state
+  const { profile } = state
 
   return (
     <View style={styles.container}>
@@ -77,11 +70,6 @@ export default function CreatorProfileScreen({ slug }: Props) {
       )}
 
       <Text style={styles.displayName}>{profile.displayName}</Text>
-
-      <FollowCountSummary
-        followerCount={followCount.followers}
-        followingCount={followCount.following}
-      />
 
       {profile.isVerified && <Text accessibilityLabel="Verified">Verified</Text>}
 

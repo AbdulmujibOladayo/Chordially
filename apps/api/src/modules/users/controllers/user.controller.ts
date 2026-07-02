@@ -5,10 +5,6 @@ import { fanService } from "../../fans/services/fan.service.js"
 import { toCreatorResponse } from "../../creators/types/creator.types.js"
 import { toFanResponse } from "../../fans/types/fan.types.js"
 import { userService } from "../services/user.service.js"
-import { onboardingService } from "../services/onboarding.service.js"
-import { onboardingRepository } from "../repositories/onboarding.repository.js"
-import { followService } from "../../follow/services/follow.service.js"
-import { bookmarkService } from "../../bookmarks/services/bookmark.service.js"
 import { createAvatarUploadUrl } from "../../../shared/storage/s3.js"
 import { AppError } from "../../../shared/errors/app-error.js"
 
@@ -38,27 +34,14 @@ export const userController = {
     }
   },
 
-  async getOnboarding(req: Request, res: Response, next: NextFunction): Promise<void> {
-    try {
-      const userId = req.userId!
-      const result = await onboardingService.getOnboarding(userId)
-      res.status(200).json(result)
-    } catch (error) {
-      next(error)
-    }
-  },
-
-  async getUploadUrl(
+  async getAvatarUploadUrl(
     req: Request,
     res: Response,
     next: NextFunction
   ): Promise<void> {
     try {
       const userId = req.userId!
-      const { contentType, type } = req.body as {
-        contentType?: string
-        type?: string
-      }
+      const { contentType } = req.body as { contentType?: string }
 
       if (!contentType || !ALLOWED_CONTENT_TYPES.includes(contentType)) {
         throw new AppError(
@@ -68,42 +51,12 @@ export const userController = {
         )
       }
 
-      const assetType = type === "banner" ? "banners" : "avatars"
       const ext = contentType.split("/")[1]
-      const key = `${assetType}/${userId}.${ext}`
+      const key = `avatars/${userId}.${ext}`
       const uploadUrl = await createAvatarUploadUrl(key, contentType)
-      const publicUrl = `https://${process.env["AWS_S3_BUCKET"]}.s3.amazonaws.com/${key}`
+      const avatarUrl = `https://${process.env["AWS_S3_BUCKET"]}.s3.amazonaws.com/${key}`
 
-      res.status(200).json({ uploadUrl, publicUrl })
-    } catch (error) {
-      next(error)
-    }
-  },
-
-  async getOnboardingResume(
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ): Promise<void> {
-    try {
-      const userId = req.userId!
-      const result = await onboardingService.getResume(userId)
-      res.status(200).json(result)
-    } catch (error) {
-      next(error)
-    }
-  },
-
-  async markOnboardingStepComplete(
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ): Promise<void> {
-    try {
-      const userId = req.userId!
-      const { stepKey } = req.params
-      const result = await onboardingService.markComplete(userId, stepKey!)
-      res.status(200).json(result)
+      res.status(200).json({ uploadUrl, avatarUrl })
     } catch (error) {
       next(error)
     }
@@ -132,30 +85,6 @@ export const userController = {
         )
       }
 
-      const stepCompletions: string[] = []
-
-      if (creatorProfile) {
-        if (displayName !== undefined) stepCompletions.push("displayName")
-        if (bio !== undefined) stepCompletions.push("bio")
-        if (avatarUrl !== undefined) stepCompletions.push("avatarUrl")
-        if (genre !== undefined) stepCompletions.push("genre")
-        if (location !== undefined) stepCompletions.push("location")
-      }
-
-      if (fanProfile) {
-        if (displayName !== undefined) stepCompletions.push("displayName")
-        if (avatarUrl !== undefined) stepCompletions.push("avatarUrl")
-        if (genrePrefs !== undefined) stepCompletions.push("genrePrefs")
-      }
-
-      if (stepCompletions.length > 0) {
-        await Promise.allSettled(
-          stepCompletions.map((stepKey) =>
-            onboardingRepository.markCompleted(userId, stepKey)
-          )
-        )
-      }
-
       if (fanProfile) {
         if (displayName !== undefined) {
           await fanService.updateFanProfile(fanProfile.id, { displayName }, userId)
@@ -166,30 +95,6 @@ export const userController = {
       }
 
       res.status(200).json({ ok: true })
-    } catch (error) {
-      next(error)
-    }
-  },
-
-  async getFollowing(req: Request, res: Response, next: NextFunction): Promise<void> {
-    try {
-      const userId = req.userId!
-      const page = Math.max(1, parseInt(req.query.page as string, 10) || 1)
-      const pageSize = Math.min(50, Math.max(1, parseInt(req.query.pageSize as string, 10) || 20))
-      const result = await followService.getFollowing(userId, page, pageSize)
-      res.status(200).json(result)
-    } catch (error) {
-      next(error)
-    }
-  },
-
-  async getBookmarks(req: Request, res: Response, next: NextFunction): Promise<void> {
-    try {
-      const userId = req.userId!
-      const page = Math.max(1, parseInt(req.query.page as string, 10) || 1)
-      const pageSize = Math.min(50, Math.max(1, parseInt(req.query.pageSize as string, 10) || 20))
-      const result = await bookmarkService.getBookmarks(userId, page, pageSize)
-      res.status(200).json(result)
     } catch (error) {
       next(error)
     }
