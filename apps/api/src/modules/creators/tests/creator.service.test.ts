@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest"
+import { describe, expect, it } from "vitest"
 import { prisma } from "../../../shared/database/prisma.js"
 import { creatorService } from "../services/creator.service.js"
 

@@ -135,8 +135,10 @@ The API app is the main backend service for Chordially, built as an Express
 - `modules/auth` — `POST /api/auth/register` and `POST /api/auth/login`,
   backed by Prisma + SQLite, password hashing (bcrypt), and JWT issuance.
 - `modules/users` — owns the `User` persistence layer used by `modules/auth`.
+- `modules/creators` — creator profile persistence and routes.
+- `modules/fans` — fan profile persistence, consumed by `modules/users`.
 - `shared/middleware/auth.middleware.ts` — JWT bearer verification
-  (`requireAuth`), ready for future authenticated routes.
+  (`requireAuth`), used by authenticated routes.
 
 **Future direction** (see Core Product Areas above): user/creator/fan profile
 APIs, payment request coordination with `packages/stellar`, and additional
@@ -172,8 +174,10 @@ Chordially mobile experience.
 - Project tooling (Expo, TypeScript, ESLint, Jest via `jest-expo`).
 - A pre-structured `src/{components,screens,navigation,hooks,services,utils,assets}`
   layout for future feature work.
-- No authentication or screens yet — see Core Product Areas above for the
-  intended fan/creator mobile experience.
+- Early building blocks (`CreatorProfileScreen`, `ProfileImagePicker`) with
+  their own tests, not yet wired into `App.tsx` — no navigation or
+  authentication flow yet. See Core Product Areas above for the intended
+  fan/creator mobile experience.
 
 ---
 

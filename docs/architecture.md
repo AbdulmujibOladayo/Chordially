@@ -57,6 +57,10 @@ src/shared/
   `POST /api/auth/login`). Issues JWTs and validates credentials.
 - **`modules/users`** – owns the `User` persistence layer (Prisma
   repository + service) that `modules/auth` depends on.
+- **`modules/creators`** – creator profile persistence and routes
+  (`POST /api/creators`, `GET /api/creators/:slug`, etc.).
+- **`modules/fans`** – owns the fan profile persistence layer, consumed by
+  `modules/users` (no dedicated routes of its own).
 
 ### Adding a new module
 
@@ -85,8 +89,9 @@ server-side.
 `apps/mobile` is a React Native (Expo) + TypeScript foundation. The `src/`
 directory is pre-structured for future feature work
 (`components/`, `screens/`, `navigation/`, `hooks/`, `services/`, `utils/`,
-`assets/`) but currently contains only placeholders — no authentication or
-screens have been implemented yet.
+`assets/`). `CreatorProfileScreen` and `ProfileImagePicker` exist as
+early building blocks with their own tests, but are not yet mounted by
+`App.tsx` — there is no navigation setup or authentication flow yet.
 
 ## Stellar: packages/stellar
 
