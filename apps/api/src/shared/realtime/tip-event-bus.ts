@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events"
+import type { TipPayoutResponse } from "../../modules/tips/types/tip-payout.types.js"
 import type { TipStatus } from "../../modules/tips/types/tip.types.js"
 
 export interface TipFeedEvent {
@@ -13,6 +14,8 @@ export interface TipFeedEvent {
   txHash: string | null
   failureReason: string | null
   emittedAt: string
+  /** Present only for split tips: each payee's share and individual status. */
+  payouts?: TipPayoutResponse[]
 }
 
 /**

@@ -86,6 +86,46 @@ describe('HorizonStellarClient', () => {
     expect(submitSpy).toHaveBeenCalledTimes(1)
   })
 
+  it('builds one operation per payee for a split payment', async () => {
+    const client = new HorizonStellarClient(config)
+    const source = Keypair.random()
+    const payeeA = Keypair.random().publicKey()
+    const payeeB = Keypair.random().publicKey()
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.spyOn((client as any).server, 'loadAccount').mockResolvedValue(
+      new Account(source.publicKey(), '1')
+    )
+    const submitSpy = vi
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .spyOn((client as any).server, 'submitTransaction')
+      .mockImplementation((tx: unknown) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        expect((tx as any).operations).toHaveLength(2)
+        return Promise.resolve({ hash: 'split-hash', ledger: 99, successful: true })
+      })
+
+    const result = await client.submitSplitPayment({
+      sourceSecretKey: source.secret(),
+      payments: [
+        { destinationPublicKey: payeeA, amount: '5' },
+        { destinationPublicKey: payeeB, amount: '3' },
+      ],
+    })
+
+    expect(result).toEqual({ hash: 'split-hash', ledger: 99, successful: true })
+    expect(submitSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects a split payment with no payees', async () => {
+    const client = new HorizonStellarClient(config)
+    const source = Keypair.random()
+
+    await expect(
+      client.submitSplitPayment({ sourceSecretKey: source.secret(), payments: [] })
+    ).rejects.toThrow('at least one payment')
+  })
+
   describe('isTransientSubmissionError', () => {
     const client = new HorizonStellarClient(config)
 

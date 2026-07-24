@@ -1,3 +1,5 @@
+import { toTipPayoutResponse, type TipPayout, type TipPayoutResponse } from "./tip-payout.types.js"
+
 export type TipStatus = "pending" | "submitted" | "confirmed" | "failed"
 
 export interface Tip {
@@ -31,9 +33,10 @@ export interface TipResponse {
   status: TipStatus
   txHash: string | null
   failureReason: string | null
+  payouts?: TipPayoutResponse[]
 }
 
-export function toTipResponse(tip: Tip): TipResponse {
+export function toTipResponse(tip: Tip, payouts?: TipPayout[]): TipResponse {
   return {
     id: tip.id,
     creatorId: tip.creatorId,
@@ -42,5 +45,8 @@ export function toTipResponse(tip: Tip): TipResponse {
     status: tip.status as TipStatus,
     txHash: tip.txHash,
     failureReason: tip.failureReason,
+    ...(payouts && payouts.length > 0
+      ? { payouts: payouts.map(toTipPayoutResponse) }
+      : {}),
   }
 }

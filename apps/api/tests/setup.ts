@@ -41,6 +41,11 @@ vi.mock("../src/shared/stellar/client.js", async () => {
         ledger: 1,
         successful: true,
       })),
+      submitSplitPayment: vi.fn(async () => ({
+        hash: `test-split-hash-${Math.random().toString(36).slice(2)}`,
+        ledger: 1,
+        successful: true,
+      })),
       isTransientSubmissionError: client.isTransientSubmissionError.bind(client),
     },
   }

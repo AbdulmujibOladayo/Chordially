@@ -1,7 +1,9 @@
 import type { NextFunction, Request, Response } from "express"
 import { AppError } from "../../../shared/errors/app-error.js"
 import { tipEventBus, type TipFeedEvent } from "../../../shared/realtime/tip-event-bus.js"
+import { tipPayoutRepository } from "../../tips/repositories/tip-payout.repository.js"
 import { tipRepository } from "../../tips/repositories/tip.repository.js"
+import { toTipPayoutResponse } from "../../tips/types/tip-payout.types.js"
 import type { Tip, TipStatus } from "../../tips/types/tip.types.js"
 import { streamService } from "../services/stream.service.js"
 import { toStreamResponse } from "../types/stream.types.js"
@@ -10,7 +12,9 @@ const HEARTBEAT_INTERVAL_MS = 20_000
 
 type TipFeedPayload = Omit<TipFeedEvent, "seq" | "emittedAt">
 
-function tipToFeedPayload(tip: Tip): TipFeedPayload {
+async function tipToFeedPayload(tip: Tip): Promise<TipFeedPayload> {
+  const payouts = await tipPayoutRepository.findByTipId(tip.id)
+
   return {
     streamId: tip.streamId!,
     tipId: tip.id,
@@ -20,6 +24,7 @@ function tipToFeedPayload(tip: Tip): TipFeedPayload {
     status: tip.status as TipStatus,
     txHash: tip.txHash,
     failureReason: tip.failureReason,
+    ...(payouts.length > 0 ? { payouts: payouts.map(toTipPayoutResponse) } : {}),
   }
 }
 
@@ -76,7 +81,7 @@ export const streamController = {
       // a tip that's still in flight.
       const backlog = await tipRepository.findByStreamId(streamId!)
       for (const tip of backlog) {
-        writeEvent(res, tipToFeedPayload(tip))
+        writeEvent(res, await tipToFeedPayload(tip))
       }
 
       const unsubscribe = tipEventBus.subscribe(streamId!, (event) => {
