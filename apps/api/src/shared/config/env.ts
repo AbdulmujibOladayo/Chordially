@@ -12,6 +12,10 @@ const envSchema = z.object({
   AWS_ACCESS_KEY_ID: z.string().default(""),
   AWS_SECRET_ACCESS_KEY: z.string().default(""),
   AWS_S3_BUCKET: z.string().default(""),
+  AWS_KMS_KEY_ID: z.string().default(""),
+  STELLAR_NETWORK: z.enum(["testnet", "public"]).default("testnet"),
+  STELLAR_HORIZON_URL: z.string().default("https://horizon-testnet.stellar.org"),
+  STELLAR_FRIENDBOT_URL: z.string().default("https://friendbot.stellar.org"),
 })
 
 export type Env = z.infer<typeof envSchema>

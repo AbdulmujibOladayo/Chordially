@@ -13,7 +13,7 @@ chordially/
 │
 ├── packages/
 │   ├── shared/   @chordially/shared – shared types and zod validation schemas
-│   └── stellar/  @chordially/stellar – Stellar integration scaffold
+│   └── stellar/  @chordially/stellar – Stellar SDK / Horizon wallet client
 │
 ├── .github/workflows/  – per-package CI
 └── docs/                – this documentation
@@ -61,6 +61,9 @@ src/shared/
   (`POST /api/creators`, `GET /api/creators/:slug`, etc.).
 - **`modules/fans`** – owns the fan profile persistence layer, consumed by
   `modules/users` (no dedicated routes of its own).
+- **`modules/wallet`** – provisions a custodial Stellar wallet for every user
+  at signup and exposes `GET /api/wallet/me`. See "Wallet: modules/wallet"
+  below.
 
 ### Adding a new module
 
@@ -95,6 +98,39 @@ early building blocks with their own tests, but are not yet mounted by
 
 ## Stellar: packages/stellar
 
-`packages/stellar` is a compile-only scaffold for the future Stellar payment
-layer described in the project overview. It currently exports placeholder
-types and interfaces only, with no blockchain or network logic.
+`packages/stellar` wraps the Stellar SDK's Horizon client behind a
+`StellarPaymentClient` interface (`HorizonStellarClient`). It exposes:
+
+- `generateKeypair()` – local keypair generation, no network call.
+- `getAccount()` / `getNativeBalance()` – reads account state and XLM
+  balance from Horizon.
+- `fundTestnetAccount()` – funds a new account via Friendbot (testnet only).
+- `isAccountNotFoundError()` – lets callers distinguish "account not yet on
+  the ledger" from other Horizon errors.
+
+Future payment/tipping features should build on this client rather than
+calling the Stellar SDK directly, so wallet logic stays reusable and
+isolated from module-specific business logic.
+
+## Wallet: modules/wallet
+
+Every user gets a custodial Stellar wallet created automatically during
+`authService.register` (`apps/api/src/modules/auth/services/auth.service.ts`):
+
+1. A keypair is generated via `@chordially/stellar`.
+2. The secret key is envelope-encrypted
+   (`modules/wallet/services/wallet-crypto.service.ts`): AWS KMS mints a
+   one-time AES-256 data key, the secret is encrypted locally with it, and
+   only the ciphertext plus the KMS-wrapped data key are persisted — the
+   plaintext secret and plaintext data key never touch disk. Decrypting the
+   secret always requires a round trip to KMS.
+3. On testnet, the new account is funded via Friendbot. This is best-effort:
+   a Friendbot outage is logged but does not fail signup, since it's a
+   testnet convenience faucet rather than part of account custody.
+
+`GET /api/wallet/me` (requires auth) returns the caller's `publicKey`,
+`network`, and current native `balance` (read live from Horizon; an account
+that isn't on the ledger yet reports a balance of `"0"` instead of erroring).
+
+Relevant env vars (`apps/api/.env.example`): `AWS_KMS_KEY_ID`,
+`STELLAR_NETWORK`, `STELLAR_HORIZON_URL`, `STELLAR_FRIENDBOT_URL`.
