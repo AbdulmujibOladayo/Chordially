@@ -16,6 +16,7 @@ model User {
   creatorProfile CreatorProfile?
   fanProfile     FanProfile?
   wallet         Wallet?
+  tipsSent       Tip[]
 }
 
 model CreatorProfile {
@@ -31,6 +32,7 @@ model CreatorProfile {
   isVerified  Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  tipsReceived Tip[]
 }
 
 model FanProfile {
@@ -60,4 +62,25 @@ model Wallet {
   network          String   @default("testnet")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+}
+
+// A fan-to-creator tip, tracked through a pending -> submitted ->
+// confirmed|failed state machine. idempotencyKey is scoped per fan so a
+// retried/duplicated client request can never submit the payment twice.
+model Tip {
+  id             String    @id @default(cuid())
+  idempotencyKey String
+  fanUserId      String
+  fan            User      @relation(fields: [fanUserId], references: [id], onDelete: Cascade)
+  creatorId      String
+  creator        CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  amount         String
+  status         String    @default("pending")
+  txHash         String?
+  failureReason  String?
+  attempts       Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([fanUserId, idempotencyKey])
 }

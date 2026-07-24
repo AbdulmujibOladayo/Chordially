@@ -64,6 +64,8 @@ src/shared/
 - **`modules/wallet`** – provisions a custodial Stellar wallet for every user
   at signup and exposes `GET /api/wallet/me`. See "Wallet: modules/wallet"
   below.
+- **`modules/tips`** – idempotent fan-to-creator tipping (`POST /api/tips`).
+  See "Tips: modules/tips" below.
 
 ### Adding a new module
 
@@ -107,6 +109,14 @@ early building blocks with their own tests, but are not yet mounted by
 - `fundTestnetAccount()` – funds a new account via Friendbot (testnet only).
 - `isAccountNotFoundError()` – lets callers distinguish "account not yet on
   the ledger" from other Horizon errors.
+- `submitPayment()` – builds, signs, and submits a native XLM payment.
+  Horizon's submit endpoint blocks until the transaction has been applied to
+  a ledger, so a resolved promise means the payment is already confirmed —
+  there's no separate async confirmation step to wire up for a simple
+  single-signature payment like this.
+- `isTransientSubmissionError()` – classifies a submission failure as
+  retryable (network hiccups, stale sequence numbers) or permanent
+  (insufficient balance, malformed transaction, etc).
 
 Future payment/tipping features should build on this client rather than
 calling the Stellar SDK directly, so wallet logic stays reusable and
@@ -134,3 +144,35 @@ that isn't on the ledger yet reports a balance of `"0"` instead of erroring).
 
 Relevant env vars (`apps/api/.env.example`): `AWS_KMS_KEY_ID`,
 `STELLAR_NETWORK`, `STELLAR_HORIZON_URL`, `STELLAR_FRIENDBOT_URL`.
+
+## Tips: modules/tips
+
+`POST /api/tips` (requires auth) lets a fan tip a creator:
+
+```json
+{ "creatorId": "...", "amount": "25", "idempotencyKey": "<uuid>" }
+```
+
+A `Tip` row moves through a `pending → submitted → confirmed|failed` state
+machine (`apps/api/src/modules/tips/services/tip.service.ts`):
+
+1. **Idempotency** — `(fanUserId, idempotencyKey)` is a unique constraint. A
+   duplicate request (same fan, same key) short-circuits to the existing
+   `Tip`'s current result without touching Horizon again. Concurrent
+   duplicate requests are handled too: if two requests race to insert the
+   same key, the loser catches the resulting `P2002` unique-constraint error
+   and returns the winner's row instead of submitting a second payment.
+2. **Submission** — the fan's wallet secret is decrypted, and the payment is
+   submitted via `@chordially/stellar`'s `submitPayment()`. Because Horizon's
+   submit endpoint waits for ledger inclusion, a successful response already
+   carries the confirmation (`txHash` + `confirmed` status) — no separate
+   polling/streaming step is needed for this synchronous single-payment flow.
+3. **Retry policy** — transient failures (`isTransientSubmissionError()`:
+   stale sequence numbers, network-level Horizon errors) are retried up to 3
+   attempts with exponential backoff. Permanent failures (insufficient
+   balance, malformed transaction, etc) fail the tip immediately with
+   `failureReason` set, no retry.
+
+`POST /api/tips` responses always return `201` with the `Tip`'s current
+`status`; a `"failed"` status is a normal, well-formed response, not an HTTP
+error — the payment simply didn't succeed.

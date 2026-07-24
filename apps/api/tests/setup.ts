@@ -36,6 +36,12 @@ vi.mock("../src/shared/stellar/client.js", async () => {
       getNativeBalance: vi.fn(async () => "10000.0000000"),
       fundTestnetAccount: vi.fn(async () => undefined),
       isAccountNotFoundError: client.isAccountNotFoundError.bind(client),
+      submitPayment: vi.fn(async () => ({
+        hash: `test-hash-${Math.random().toString(36).slice(2)}`,
+        ledger: 1,
+        successful: true,
+      })),
+      isTransientSubmissionError: client.isTransientSubmissionError.bind(client),
     },
   }
 })
