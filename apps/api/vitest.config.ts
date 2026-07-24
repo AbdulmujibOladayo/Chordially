@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@chordially/shared": path.resolve(dirname, "../../packages/shared/src/index.ts"),
+      "@chordially/stellar": path.resolve(dirname, "../../packages/stellar/src/index.ts"),
     },
   },
   test: {
