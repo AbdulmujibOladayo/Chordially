@@ -24,3 +24,16 @@ export interface StellarAccount {
   sequence: string
   balances: StellarAccountBalance[]
 }
+
+export interface StellarPaymentInput {
+  sourceSecretKey: string
+  destinationPublicKey: string
+  /** Decimal string amount of native XLM, e.g. "25" or "25.0000000". */
+  amount: string
+}
+
+export interface StellarPaymentResult {
+  hash: string
+  ledger: number
+  successful: boolean
+}

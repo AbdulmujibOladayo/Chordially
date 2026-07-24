@@ -1,4 +1,10 @@
-import type { StellarAccount, StellarAccountReference, StellarKeypair } from '../types/index.js'
+import type {
+  StellarAccount,
+  StellarAccountReference,
+  StellarKeypair,
+  StellarPaymentInput,
+  StellarPaymentResult,
+} from '../types/index.js'
 
 export interface StellarPaymentClient {
   /** Generates a new Stellar keypair. Does not touch the network. */
@@ -15,4 +21,19 @@ export interface StellarPaymentClient {
 
   /** True if the given error means the account doesn't exist on the ledger yet. */
   isAccountNotFoundError(error: unknown): boolean
+
+  /**
+   * Builds, signs, and submits a native XLM payment. Horizon's submit
+   * endpoint blocks until the transaction has been applied to a ledger, so a
+   * resolved promise means the payment is already confirmed.
+   */
+  submitPayment(input: StellarPaymentInput): Promise<StellarPaymentResult>
+
+  /**
+   * True if a submission failure is transient and safe to retry (timeouts,
+   * network errors, stale sequence numbers). False for failures that will
+   * never succeed on retry (insufficient balance, malformed transaction,
+   * unknown destination, etc).
+   */
+  isTransientSubmissionError(error: unknown): boolean
 }

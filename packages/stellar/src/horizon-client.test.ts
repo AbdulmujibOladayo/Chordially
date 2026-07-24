@@ -1,4 +1,4 @@
-import { Keypair } from '@stellar/stellar-sdk'
+import { Account, Keypair, NetworkError } from '@stellar/stellar-sdk'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { HorizonStellarClient } from './horizon-client.js'
 
@@ -60,5 +60,56 @@ describe('HorizonStellarClient', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       'https://friendbot.stellar.org?addr=GABC'
     )
+  })
+
+  it('builds, signs, and submits a native payment', async () => {
+    const client = new HorizonStellarClient(config)
+    const source = Keypair.random()
+    const destination = Keypair.random().publicKey()
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.spyOn((client as any).server, 'loadAccount').mockResolvedValue(
+      new Account(source.publicKey(), '1')
+    )
+    const submitSpy = vi
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .spyOn((client as any).server, 'submitTransaction')
+      .mockResolvedValue({ hash: 'abc123', ledger: 42, successful: true })
+
+    const result = await client.submitPayment({
+      sourceSecretKey: source.secret(),
+      destinationPublicKey: destination,
+      amount: '25',
+    })
+
+    expect(result).toEqual({ hash: 'abc123', ledger: 42, successful: true })
+    expect(submitSpy).toHaveBeenCalledTimes(1)
+  })
+
+  describe('isTransientSubmissionError', () => {
+    const client = new HorizonStellarClient(config)
+
+    it('treats a stale sequence number as transient', () => {
+      const error = new NetworkError('bad seq', {
+        data: { extras: { result_codes: { transaction: 'tx_bad_seq' } } },
+      })
+      expect(client.isTransientSubmissionError(error)).toBe(true)
+    })
+
+    it('treats an insufficient balance failure as permanent', () => {
+      const error = new NetworkError('failed', {
+        data: { extras: { result_codes: { transaction: 'tx_failed' } } },
+      })
+      expect(client.isTransientSubmissionError(error)).toBe(false)
+    })
+
+    it('treats a network error with no result code as transient', () => {
+      const error = new NetworkError('timeout', {})
+      expect(client.isTransientSubmissionError(error)).toBe(true)
+    })
+
+    it('treats a plain error as permanent', () => {
+      expect(client.isTransientSubmissionError(new Error('boom'))).toBe(false)
+    })
   })
 })
