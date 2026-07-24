@@ -29,4 +29,34 @@ export const tipController = {
       next(error)
     }
   },
+
+  async getById(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const fanUserId = req.userId!
+      const { id } = req.params
+
+      const tip = await tipService.getTipForFan(id!, fanUserId)
+
+      res.status(200).json(tip)
+    } catch (error) {
+      next(error)
+    }
+  },
+
+  async retry(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const fanUserId = req.userId!
+      const { id } = req.params
+
+      if (!tipFanRateLimiter.consume(fanUserId)) {
+        throw new AppError(429, "RATE_LIMITED", "You're sending tips too quickly. Try again shortly.")
+      }
+
+      const tip = await tipService.retryTip(id!, fanUserId)
+
+      res.status(201).json(tip)
+    } catch (error) {
+      next(error)
+    }
+  },
 }

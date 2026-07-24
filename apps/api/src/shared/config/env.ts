@@ -19,6 +19,14 @@ const envSchema = z.object({
   TIP_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(10_000),
   TIP_RATE_LIMIT_PER_FAN: z.coerce.number().int().positive().default(5),
   TIP_RATE_LIMIT_PER_STREAM: z.coerce.number().int().positive().default(30),
+  RECONCILIATION_ENABLED: z.coerce.boolean().default(true),
+  RECONCILIATION_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
+  // How long a tip can sit in "submitted" before reconciliation will look at
+  // it at all (gives a normal in-flight submission time to finish).
+  RECONCILIATION_STUCK_THRESHOLD_MS: z.coerce.number().int().positive().default(60_000),
+  // How long a tip can stay unresolved before reconciliation gives up and
+  // dead-letters it as failed.
+  RECONCILIATION_DEAD_LETTER_THRESHOLD_MS: z.coerce.number().int().positive().default(300_000),
 })
 
 export type Env = z.infer<typeof envSchema>

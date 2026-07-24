@@ -47,6 +47,7 @@ vi.mock("../src/shared/stellar/client.js", async () => {
         successful: true,
       })),
       isTransientSubmissionError: client.isTransientSubmissionError.bind(client),
+      listSentPayments: vi.fn(async () => []),
     },
   }
 })

@@ -9,7 +9,8 @@
     "start": "node dist/server.js",
     "lint": "dotenv -e .env.example -- prisma generate && eslint src",
     "typecheck": "dotenv -e .env.example -- prisma generate && tsc -p tsconfig.json --noEmit",
-    "test": "dotenv -e .env.test -- prisma generate && dotenv -e .env.test -- prisma db push --skip-generate --accept-data-loss && dotenv -e .env.test -- vitest run"
+    "test": "dotenv -e .env.test -- prisma generate && dotenv -e .env.test -- prisma db push --skip-generate --accept-data-loss && dotenv -e .env.test -- vitest run",
+    "test:e2e:testnet": "dotenv -e .env.test -- prisma generate && dotenv -e .env.test -- prisma db push --skip-generate --accept-data-loss && dotenv -e .env.test -- vitest run -c vitest.e2e.config.ts"
   },
   "dependencies": {
     "@aws-sdk/client-kms": "^3.1075.0",

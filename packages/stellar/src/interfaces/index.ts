@@ -1,8 +1,10 @@
 import type {
+  ListPaymentsOptions,
   StellarAccount,
   StellarAccountReference,
   StellarKeypair,
   StellarPaymentInput,
+  StellarPaymentRecord,
   StellarPaymentResult,
   StellarSplitPaymentInput,
 } from '../types/index.js'
@@ -44,4 +46,15 @@ export interface StellarPaymentClient {
    * unknown destination, etc).
    */
   isTransientSubmissionError(error: unknown): boolean
+
+  /**
+   * Lists payments sent *from* this account, most recent first. Used for
+   * reconciliation: matching a locally stuck-in-flight payment against what
+   * actually happened on the ledger, when the local process never received
+   * (or never persisted) the submission result.
+   */
+  listSentPayments(
+    reference: StellarAccountReference,
+    options?: ListPaymentsOptions
+  ): Promise<StellarPaymentRecord[]>
 }

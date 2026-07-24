@@ -117,6 +117,110 @@ describe('HorizonStellarClient', () => {
     expect(submitSpy).toHaveBeenCalledTimes(1)
   })
 
+  describe('listSentPayments', () => {
+    function mockPaymentsPage(records: unknown[]) {
+      const builder = {
+        forAccount: vi.fn().mockReturnThis(),
+        order: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        call: vi.fn().mockResolvedValue({ records }),
+      }
+      return builder
+    }
+
+    it('returns only outgoing payment operations for the given account', async () => {
+      const client = new HorizonStellarClient(config)
+      const publicKey = Keypair.random().publicKey()
+      const otherPublicKey = Keypair.random().publicKey()
+
+      const builder = mockPaymentsPage([
+        {
+          type: 'payment',
+          from: publicKey,
+          to: 'GDEST1',
+          amount: '5.0000000',
+          asset_type: 'native',
+          transaction_hash: 'hash1',
+          transaction_successful: true,
+          created_at: '2026-01-01T00:00:00Z',
+        },
+        {
+          // Incoming payment (this account is the receiver) should be excluded.
+          type: 'payment',
+          from: otherPublicKey,
+          to: publicKey,
+          amount: '9.0000000',
+          asset_type: 'native',
+          transaction_hash: 'hash2',
+          transaction_successful: true,
+          created_at: '2026-01-01T00:01:00Z',
+        },
+        {
+          // Non-payment operation should be excluded.
+          type: 'create_account',
+          from: publicKey,
+          created_at: '2026-01-01T00:02:00Z',
+        },
+      ])
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.spyOn((client as any).server, 'payments').mockReturnValue(builder)
+
+      const payments = await client.listSentPayments({ publicKey })
+
+      expect(payments).toEqual([
+        {
+          hash: 'hash1',
+          from: publicKey,
+          to: 'GDEST1',
+          amount: '5.0000000',
+          assetType: 'native',
+          successful: true,
+          createdAt: '2026-01-01T00:00:00Z',
+        },
+      ])
+      expect(builder.forAccount).toHaveBeenCalledWith(publicKey)
+    })
+
+    it('filters out payments before sinceISOTime', async () => {
+      const client = new HorizonStellarClient(config)
+      const publicKey = Keypair.random().publicKey()
+
+      const builder = mockPaymentsPage([
+        {
+          type: 'payment',
+          from: publicKey,
+          to: 'GDEST1',
+          amount: '1.0000000',
+          asset_type: 'native',
+          transaction_hash: 'old-hash',
+          transaction_successful: true,
+          created_at: '2020-01-01T00:00:00Z',
+        },
+        {
+          type: 'payment',
+          from: publicKey,
+          to: 'GDEST2',
+          amount: '2.0000000',
+          asset_type: 'native',
+          transaction_hash: 'new-hash',
+          transaction_successful: true,
+          created_at: '2030-01-01T00:00:00Z',
+        },
+      ])
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.spyOn((client as any).server, 'payments').mockReturnValue(builder)
+
+      const payments = await client.listSentPayments(
+        { publicKey },
+        { sinceISOTime: '2025-01-01T00:00:00Z' }
+      )
+
+      expect(payments.map((p) => p.hash)).toEqual(['new-hash'])
+    })
+  })
+
   it('rejects a split payment with no payees', async () => {
     const client = new HorizonStellarClient(config)
     const source = Keypair.random()
