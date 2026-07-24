@@ -17,9 +17,13 @@ import type {
   StellarNetworkConfig,
   StellarPaymentInput,
   StellarPaymentResult,
+  StellarSplitPaymentInput,
 } from './types/index.js'
 
 const NATIVE_ASSET_TYPES = new Set(['native'])
+
+// Stellar caps a transaction at 100 operations.
+const MAX_OPERATIONS_PER_TRANSACTION = 100
 
 const TRANSIENT_TRANSACTION_RESULT_CODES = new Set([
   'tx_bad_seq',
@@ -102,23 +106,44 @@ export class HorizonStellarClient implements StellarPaymentClient {
   }
 
   async submitPayment(input: StellarPaymentInput): Promise<StellarPaymentResult> {
+    return this.submitSplitPayment({
+      sourceSecretKey: input.sourceSecretKey,
+      payments: [
+        { destinationPublicKey: input.destinationPublicKey, amount: input.amount },
+      ],
+    })
+  }
+
+  async submitSplitPayment(input: StellarSplitPaymentInput): Promise<StellarPaymentResult> {
+    if (input.payments.length === 0) {
+      throw new Error('submitSplitPayment requires at least one payment')
+    }
+
+    if (input.payments.length > MAX_OPERATIONS_PER_TRANSACTION) {
+      throw new Error(
+        `submitSplitPayment supports at most ${MAX_OPERATIONS_PER_TRANSACTION} payments per transaction, got ${input.payments.length}`
+      )
+    }
+
     const sourceKeypair = Keypair.fromSecret(input.sourceSecretKey)
     const sourceAccount = await this.server.loadAccount(sourceKeypair.publicKey())
 
-    const transaction = new TransactionBuilder(sourceAccount, {
+    const builder = new TransactionBuilder(sourceAccount, {
       fee: BASE_FEE,
       networkPassphrase: networkPassphrase(this.config.network),
     })
-      .addOperation(
+
+    for (const payment of input.payments) {
+      builder.addOperation(
         Operation.payment({
-          destination: input.destinationPublicKey,
+          destination: payment.destinationPublicKey,
           asset: Asset.native(),
-          amount: input.amount,
+          amount: payment.amount,
         })
       )
-      .setTimeout(30)
-      .build()
+    }
 
+    const transaction = builder.setTimeout(30).build()
     transaction.sign(sourceKeypair)
 
     const result = await this.server.submitTransaction(transaction)

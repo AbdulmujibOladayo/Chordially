@@ -34,6 +34,8 @@ model CreatorProfile {
   updatedAt   DateTime @updatedAt
   tipsReceived Tip[]
   streams      Stream[]
+  payoutShares StreamPayoutConfigPayee[]
+  tipPayouts   TipPayout[]
 }
 
 model FanProfile {
@@ -85,17 +87,64 @@ model Tip {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
+  payouts TipPayout[]
+
   @@unique([fanUserId, idempotencyKey])
 }
 
 // A creator's live session. Tips submitted with a streamId are broadcast in
 // real time to that stream's feed (see modules/streams).
 model Stream {
-  id        String    @id @default(cuid())
-  creatorId String
-  creator   CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
-  title     String?
-  startedAt DateTime  @default(now())
-  endedAt   DateTime?
-  tips      Tip[]
+  id           String    @id @default(cuid())
+  creatorId    String
+  creator      CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  title        String?
+  startedAt    DateTime  @default(now())
+  endedAt      DateTime?
+  tips         Tip[]
+  payoutConfig StreamPayoutConfig?
+}
+
+// A stream's payout split: each payee's percentage of every tip made to
+// that stream. Percentages across all payees for a config must sum to 100.
+model StreamPayoutConfig {
+  id        String   @id @default(cuid())
+  streamId  String   @unique
+  stream    Stream   @relation(fields: [streamId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  payees    StreamPayoutConfigPayee[]
+}
+
+model StreamPayoutConfigPayee {
+  id             String             @id @default(cuid())
+  payoutConfigId String
+  payoutConfig   StreamPayoutConfig @relation(fields: [payoutConfigId], references: [id], onDelete: Cascade)
+  creatorId      String
+  creator        CreatorProfile     @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  percentage     Float
+
+  @@unique([payoutConfigId, creatorId])
+}
+
+// One payee's share of a split tip, snapshotted from StreamPayoutConfig at
+// the moment the tip was submitted (so a later config change never rewrites
+// the meaning of a historical tip). Settlement is atomic — a single Stellar
+// transaction carries one payment operation per payee — so every payout row
+// for a given tip always shares the same status and txHash; the per-row
+// state exists for bookkeeping/display and as an extension point for future
+// per-payee handling, not because payees can settle independently today.
+model TipPayout {
+  id            String   @id @default(cuid())
+  tipId         String
+  tip           Tip      @relation(fields: [tipId], references: [id], onDelete: Cascade)
+  creatorId     String
+  creator       CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  percentage    Float
+  amount        String
+  status        String   @default("pending")
+  txHash        String?
+  failureReason String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }

@@ -225,3 +225,33 @@ The event bus and rate limiters are both plain in-memory state, which is
 enough for a single API instance; a multi-instance deployment would need to
 swap the event bus for something like Redis pub/sub and the rate limiters
 for a shared store, without changing any of the calling code.
+
+## Split payments: modules/streams
+
+A stream that involves multiple performers can configure a payout split so
+every tip made to it is divided automatically. The full tradeoff analysis
+(atomic multi-operation transaction vs. a collection-wallet-and-scheduled-payout
+model, and why the former was chosen) lives in
+[`docs/split-payments-design.md`](./split-payments-design.md); this section
+just summarizes where the pieces live.
+
+- `PUT /api/streams/:id/payout-config` (host-only) sets a `StreamPayoutConfig`
+  — a list of `{ creatorId, percentage }` payees whose percentages must sum
+  to 100 (`modules/streams/services/stream-payout-config.service.ts`).
+  `GET /api/streams/:id/payout-config` reads it back.
+- When `POST /api/tips` is submitted with a `streamId` that has a payout
+  config, `tip.service.ts` computes each payee's share
+  (`modules/streams/services/payout-split.util.ts` — rounds to Stellar's
+  7-decimal precision and hands any rounding remainder to the first payee so
+  shares always sum exactly to the tip amount), snapshots them into one
+  `TipPayout` row per payee, and submits a single Stellar transaction with
+  one `Payment` operation per payee (`@chordially/stellar`'s
+  `submitSplitPayment()`) instead of the single-recipient `submitPayment()`.
+- Because it's one atomic transaction, every `TipPayout` row for a tip always
+  shares the same status and `txHash` as the parent `Tip` — they move
+  through `pending → submitted → confirmed|failed` together. The per-row
+  state exists for bookkeeping and display (including the live feed showing
+  each creator's share), not because payees can settle independently.
+- The live feed (`GET /api/streams/:id/tips`) includes a `payouts` array on
+  every event and backlog entry for a split tip, so viewers see each
+  creator's individual share update in lockstep with the overall tip status.

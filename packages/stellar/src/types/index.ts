@@ -32,6 +32,18 @@ export interface StellarPaymentInput {
   amount: string
 }
 
+export interface StellarSplitPaymentDestination {
+  destinationPublicKey: string
+  /** Decimal string amount of native XLM, e.g. "25" or "25.0000000". */
+  amount: string
+}
+
+export interface StellarSplitPaymentInput {
+  sourceSecretKey: string
+  /** One Payment operation per entry, submitted atomically in a single transaction. */
+  payments: StellarSplitPaymentDestination[]
+}
+
 export interface StellarPaymentResult {
   hash: string
   ledger: number

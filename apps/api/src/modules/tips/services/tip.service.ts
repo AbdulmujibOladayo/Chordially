@@ -1,5 +1,7 @@
 import { Prisma } from "@prisma/client"
 import { creatorService } from "../../creators/services/creator.service.js"
+import { splitAmount } from "../../streams/services/payout-split.util.js"
+import { streamPayoutConfigService } from "../../streams/services/stream-payout-config.service.js"
 import { streamService } from "../../streams/services/stream.service.js"
 import { walletRepository } from "../../wallet/repositories/wallet.repository.js"
 import { decryptSecret } from "../../wallet/services/wallet-crypto.service.js"
@@ -7,7 +9,9 @@ import { AppError } from "../../../shared/errors/app-error.js"
 import { logger } from "../../../shared/logger/logger.js"
 import { tipEventBus } from "../../../shared/realtime/tip-event-bus.js"
 import { stellarClient } from "../../../shared/stellar/client.js"
+import { tipPayoutRepository } from "../repositories/tip-payout.repository.js"
 import { tipRepository } from "../repositories/tip.repository.js"
+import { toTipPayoutResponse, type TipPayout } from "../types/tip-payout.types.js"
 import {
   toTipResponse,
   type CreateTipInput,
@@ -31,7 +35,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-function publishTipEvent(tip: Tip): void {
+function publishTipEvent(tip: Tip, payouts: TipPayout[]): void {
   if (!tip.streamId) {
     return
   }
@@ -45,30 +49,101 @@ function publishTipEvent(tip: Tip): void {
     status: tip.status as TipStatus,
     txHash: tip.txHash,
     failureReason: tip.failureReason,
+    ...(payouts.length > 0 ? { payouts: payouts.map(toTipPayoutResponse) } : {}),
   })
 }
 
-async function submitToStellar(tip: Tip): Promise<Tip> {
-  const [fanWallet, creator] = await Promise.all([
-    walletRepository.findByUserId(tip.fanUserId),
-    creatorService.findById(tip.creatorId),
+/**
+ * Every state transition below moves the Tip row and (for a split tip) all
+ * of its TipPayout rows together, then publishes one feed event carrying
+ * both. This helper keeps those three steps in lockstep so a split tip's
+ * payouts can never drift out of sync with its parent tip's status.
+ */
+async function transition(
+  tip: Tip,
+  isSplit: boolean,
+  applyToTip: () => Promise<Tip>,
+  applyToPayouts: () => Promise<unknown>
+): Promise<{ tip: Tip; payouts: TipPayout[] }> {
+  const [updatedTip] = await Promise.all([
+    applyToTip(),
+    isSplit ? applyToPayouts() : Promise.resolve(),
   ])
+  const payouts = isSplit ? await tipPayoutRepository.findByTipId(tip.id) : []
+  publishTipEvent(updatedTip, payouts)
+  return { tip: updatedTip, payouts }
+}
+
+interface PayoutDestination {
+  destinationPublicKey: string
+  amount: string
+}
+
+/** Resolves each payee's wallet, or returns null if any payee has none (the whole split can't be submitted). */
+async function resolvePayoutDestinations(
+  payouts: TipPayout[]
+): Promise<PayoutDestination[] | null> {
+  const destinations: PayoutDestination[] = []
+
+  for (const payout of payouts) {
+    const creator = await creatorService.findById(payout.creatorId)
+    const wallet = creator ? await walletRepository.findByUserId(creator.userId) : null
+    if (!wallet) {
+      return null
+    }
+    destinations.push({ destinationPublicKey: wallet.publicKey, amount: payout.amount })
+  }
+
+  return destinations
+}
+
+async function submitToStellar(tip: Tip, initialPayouts: TipPayout[]): Promise<Tip> {
+  const isSplit = initialPayouts.length > 0
+  const fanWallet = await walletRepository.findByUserId(tip.fanUserId)
 
   if (!fanWallet) {
-    const failed = await tipRepository.markFailed(tip.id, "Sender has no wallet", tip.attempts)
-    publishTipEvent(failed)
+    const { tip: failed } = await transition(
+      tip,
+      isSplit,
+      () => tipRepository.markFailed(tip.id, "Sender has no wallet", tip.attempts),
+      () => tipPayoutRepository.markFailedForTip(tip.id, "Sender has no wallet")
+    )
     return failed
   }
 
-  const creatorWallet = creator ? await walletRepository.findByUserId(creator.userId) : null
-  if (!creatorWallet) {
-    const failed = await tipRepository.markFailed(tip.id, "Creator has no wallet", tip.attempts)
-    publishTipEvent(failed)
+  const singleCreator = isSplit ? null : await creatorService.findById(tip.creatorId)
+  const singleWallet =
+    !isSplit && singleCreator ? await walletRepository.findByUserId(singleCreator.userId) : null
+  const destinations = isSplit ? await resolvePayoutDestinations(initialPayouts) : null
+
+  if (isSplit && !destinations) {
+    const reason = "One or more payees has no wallet"
+    const { tip: failed } = await transition(
+      tip,
+      isSplit,
+      () => tipRepository.markFailed(tip.id, reason, tip.attempts),
+      () => tipPayoutRepository.markFailedForTip(tip.id, reason)
+    )
     return failed
   }
 
-  const submitted = await tipRepository.updateStatus(tip.id, "submitted")
-  publishTipEvent(submitted)
+  if (!isSplit && !singleWallet) {
+    const { tip: failed } = await transition(
+      tip,
+      isSplit,
+      () => tipRepository.markFailed(tip.id, "Creator has no wallet", tip.attempts),
+      () => Promise.resolve()
+    )
+    return failed
+  }
+
+  await transition(
+    tip,
+    isSplit,
+    () => tipRepository.updateStatus(tip.id, "submitted"),
+    () => tipPayoutRepository.updateStatusForTip(tip.id, "submitted")
+  )
+
   const sourceSecretKey = await decryptSecret(fanWallet)
 
   let attempts = tip.attempts
@@ -78,14 +153,20 @@ async function submitToStellar(tip: Tip): Promise<Tip> {
     attempts += 1
 
     try {
-      const result = await stellarClient.submitPayment({
-        sourceSecretKey,
-        destinationPublicKey: creatorWallet.publicKey,
-        amount: tip.amount,
-      })
+      const result = destinations
+        ? await stellarClient.submitSplitPayment({ sourceSecretKey, payments: destinations })
+        : await stellarClient.submitPayment({
+            sourceSecretKey,
+            destinationPublicKey: singleWallet!.publicKey,
+            amount: tip.amount,
+          })
 
-      const confirmed = await tipRepository.markConfirmed(tip.id, result.hash, attempts)
-      publishTipEvent(confirmed)
+      const { tip: confirmed } = await transition(
+        tip,
+        isSplit,
+        () => tipRepository.markConfirmed(tip.id, result.hash, attempts),
+        () => tipPayoutRepository.markConfirmedForTip(tip.id, result.hash)
+      )
       return confirmed
     } catch (error) {
       lastError = error
@@ -106,8 +187,13 @@ async function submitToStellar(tip: Tip): Promise<Tip> {
     }
   }
 
-  const failed = await tipRepository.markFailed(tip.id, errorMessage(lastError), attempts)
-  publishTipEvent(failed)
+  const reason = errorMessage(lastError)
+  const { tip: failed } = await transition(
+    tip,
+    isSplit,
+    () => tipRepository.markFailed(tip.id, reason, attempts),
+    () => tipPayoutRepository.markFailedForTip(tip.id, reason)
+  )
   return failed
 }
 
@@ -119,7 +205,8 @@ export const tipService = {
     )
 
     if (existing) {
-      return toTipResponse(existing)
+      const payouts = await tipPayoutRepository.findByTipId(existing.id)
+      return toTipResponse(existing, payouts)
     }
 
     const creator = await creatorService.findById(input.creatorId)
@@ -127,6 +214,7 @@ export const tipService = {
       throw new AppError(404, "CREATOR_NOT_FOUND", "Creator profile not found")
     }
 
+    let payoutConfig = null
     if (input.streamId) {
       const stream = await streamService.findById(input.streamId)
       if (!stream) {
@@ -139,6 +227,7 @@ export const tipService = {
           "This stream does not belong to the given creator"
         )
       }
+      payoutConfig = await streamPayoutConfigService.findByStreamId(input.streamId)
     }
 
     let tip: Tip
@@ -154,15 +243,36 @@ export const tipService = {
           input.idempotencyKey
         )
         if (winner) {
-          return toTipResponse(winner)
+          const payouts = await tipPayoutRepository.findByTipId(winner.id)
+          return toTipResponse(winner, payouts)
         }
       }
       throw error
     }
 
-    publishTipEvent(tip)
+    let payouts: TipPayout[] = []
+    if (payoutConfig) {
+      const shares = splitAmount(
+        tip.amount,
+        payoutConfig.payees.map((payee) => ({
+          creatorId: payee.creatorId,
+          percentage: payee.percentage,
+        }))
+      )
+      payouts = await tipPayoutRepository.createMany(
+        shares.map((share) => ({
+          tipId: tip.id,
+          creatorId: share.creatorId,
+          percentage: share.percentage,
+          amount: share.amount,
+        }))
+      )
+    }
 
-    const finalTip = await submitToStellar(tip)
-    return toTipResponse(finalTip)
+    publishTipEvent(tip, payouts)
+
+    const finalTip = await submitToStellar(tip, payouts)
+    const finalPayouts = await tipPayoutRepository.findByTipId(tip.id)
+    return toTipResponse(finalTip, finalPayouts)
   },
 }

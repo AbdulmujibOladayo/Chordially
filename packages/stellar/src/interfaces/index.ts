@@ -4,6 +4,7 @@ import type {
   StellarKeypair,
   StellarPaymentInput,
   StellarPaymentResult,
+  StellarSplitPaymentInput,
 } from '../types/index.js'
 
 export interface StellarPaymentClient {
@@ -28,6 +29,13 @@ export interface StellarPaymentClient {
    * resolved promise means the payment is already confirmed.
    */
   submitPayment(input: StellarPaymentInput): Promise<StellarPaymentResult>
+
+  /**
+   * Builds, signs, and submits a single transaction containing one native
+   * XLM Payment operation per destination. Stellar transactions are atomic,
+   * so this either pays every destination or none of them.
+   */
+  submitSplitPayment(input: StellarSplitPaymentInput): Promise<StellarPaymentResult>
 
   /**
    * True if a submission failure is transient and safe to retry (timeouts,

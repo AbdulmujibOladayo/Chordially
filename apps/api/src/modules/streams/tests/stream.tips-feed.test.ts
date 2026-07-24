@@ -197,6 +197,65 @@ describe("GET /api/streams/:id/tips (SSE feed)", () => {
     sseReq.destroy()
   })
 
+  it("includes each payee's share for a split tip", async () => {
+    const fan = await registerAndLogin("split-feed-fan@test.com")
+    const { token: hostToken, creator: host } = await createCreatorWithProfileAndWallet(
+      "split-feed-host@test.com",
+      "split-feed-host"
+    )
+    const { creator: bob } = await createCreatorWithProfileAndWallet(
+      "split-feed-bob@test.com",
+      "split-feed-bob"
+    )
+
+    const streamRes = await request(app)
+      .post("/api/streams")
+      .set("Authorization", `Bearer ${hostToken}`)
+      .send({})
+    const streamId = streamRes.body.id as string
+
+    await request(app)
+      .put(`/api/streams/${streamId}/payout-config`)
+      .set("Authorization", `Bearer ${hostToken}`)
+      .send({
+        payees: [
+          { creatorId: host.id, percentage: 60 },
+          { creatorId: bob.id, percentage: 40 },
+        ],
+      })
+
+    const { req: sseReq, collectUntil } = await openSseConnection(
+      `/api/streams/${streamId}/tips`,
+      hostToken
+    )
+
+    const tipRes = await request(app)
+      .post("/api/tips")
+      .set("Authorization", `Bearer ${fan.token}`)
+      .send({
+        creatorId: host.id,
+        amount: "10",
+        idempotencyKey: crypto.randomUUID(),
+        streamId,
+      })
+    const tipId = tipRes.body.id as string
+
+    const events = await collectUntil((collected) =>
+      collected.some((event) => event.data.status === "confirmed" && event.data.tipId === tipId)
+    )
+
+    const confirmedEvent = events.find(
+      (event) => event.data.tipId === tipId && event.data.status === "confirmed"
+    )
+    const payouts = confirmedEvent!.data.payouts as { creatorId: string; amount: string }[]
+
+    expect(payouts).toHaveLength(2)
+    expect(payouts.find((p) => p.creatorId === host.id)?.amount).toBe("6.0000000")
+    expect(payouts.find((p) => p.creatorId === bob.id)?.amount).toBe("4.0000000")
+
+    sseReq.destroy()
+  })
+
   it("returns 401 for an unauthenticated request", async () => {
     const res = await request(app).get("/api/streams/does-not-exist/tips")
     expect(res.status).toBe(401)
