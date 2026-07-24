@@ -171,4 +171,26 @@ describe("POST /api/tips", () => {
     const stored = await prisma.tip.findUnique({ where: { id: res.body.id } })
     expect(stored?.attempts).toBe(1)
   })
+
+  it("rate-limits a fan sending too many tips too quickly", async () => {
+    const { token } = await registerAndLogin("fan-ratelimit@test.com")
+    const creator = await createCreatorWithWallet("creator-ratelimit@test.com", "ratelimit-creator")
+
+    // Default limit is 5 tips per 10s per fan (TIP_RATE_LIMIT_PER_FAN).
+    for (let i = 0; i < 5; i++) {
+      const res = await request(app)
+        .post("/api/tips")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ creatorId: creator.id, amount: "1", idempotencyKey: crypto.randomUUID() })
+      expect(res.status).toBe(201)
+    }
+
+    const limited = await request(app)
+      .post("/api/tips")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ creatorId: creator.id, amount: "1", idempotencyKey: crypto.randomUUID() })
+
+    expect(limited.status).toBe(429)
+    expect(limited.body.error.code).toBe("RATE_LIMITED")
+  })
 })
