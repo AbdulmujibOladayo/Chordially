@@ -33,6 +33,7 @@ model CreatorProfile {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   tipsReceived Tip[]
+  streams      Stream[]
 }
 
 model FanProfile {
@@ -74,6 +75,8 @@ model Tip {
   fan            User      @relation(fields: [fanUserId], references: [id], onDelete: Cascade)
   creatorId      String
   creator        CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  streamId       String?
+  stream         Stream?   @relation(fields: [streamId], references: [id], onDelete: SetNull)
   amount         String
   status         String    @default("pending")
   txHash         String?
@@ -83,4 +86,16 @@ model Tip {
   updatedAt      DateTime  @updatedAt
 
   @@unique([fanUserId, idempotencyKey])
+}
+
+// A creator's live session. Tips submitted with a streamId are broadcast in
+// real time to that stream's feed (see modules/streams).
+model Stream {
+  id        String    @id @default(cuid())
+  creatorId String
+  creator   CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  title     String?
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+  tips      Tip[]
 }

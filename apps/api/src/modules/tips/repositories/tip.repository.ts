@@ -13,11 +13,16 @@ export const tipRepository = {
       data: {
         fanUserId: input.fanUserId,
         creatorId: input.creatorId,
+        streamId: input.streamId,
         amount: input.amount,
         idempotencyKey: input.idempotencyKey,
         status: "pending",
       },
     })
+  },
+
+  findByStreamId(streamId: string): Promise<Tip[]> {
+    return prisma.tip.findMany({ where: { streamId }, orderBy: { createdAt: "asc" } })
   },
 
   updateStatus(id: string, status: string): Promise<Tip> {

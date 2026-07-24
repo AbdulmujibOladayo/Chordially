@@ -66,6 +66,9 @@ src/shared/
   below.
 - **`modules/tips`** – idempotent fan-to-creator tipping (`POST /api/tips`).
   See "Tips: modules/tips" below.
+- **`modules/streams`** – creator live sessions and the real-time tip feed
+  (`POST /api/streams`, `POST /api/streams/:id/end`,
+  `GET /api/streams/:id/tips`). See "Live tip feed: modules/streams" below.
 
 ### Adding a new module
 
@@ -176,3 +179,49 @@ machine (`apps/api/src/modules/tips/services/tip.service.ts`):
 `POST /api/tips` responses always return `201` with the `Tip`'s current
 `status`; a `"failed"` status is a normal, well-formed response, not an HTTP
 error — the payment simply didn't succeed.
+
+Tip requests accept an optional `streamId`; when present, it must belong to
+the same creator being tipped, and the tip's state transitions are broadcast
+live to that stream's feed (see below). Two abuse-protection rate limits
+apply to every tip submission (`shared/rate-limit/rate-limiter.ts`, wired up
+in `modules/tips/controllers/tip.controller.ts`): a per-fan limit and, when a
+`streamId` is given, a per-stream limit. Both are in-memory fixed-window
+limiters, configurable via `TIP_RATE_LIMIT_WINDOW_MS`,
+`TIP_RATE_LIMIT_PER_FAN`, and `TIP_RATE_LIMIT_PER_STREAM`; exceeding either
+returns `429`.
+
+## Live tip feed: modules/streams
+
+A `Stream` represents one of a creator's live sessions. A creator starts one
+with `POST /api/streams` and ends it with `POST /api/streams/:id/end`; fans
+tip into it by including the stream's id as `streamId` on `POST /api/tips`.
+
+`GET /api/streams/:id/tips` is a Server-Sent Events feed (chosen over
+WebSockets since this is a one-directional broadcast — server to viewers —
+with no need for the client to send anything back over the same
+connection). On connect it:
+
+1. Replays a **backlog**: every tip already associated with the stream, each
+   at its *current* status only (`modules/tips/repositories/tip.repository.ts`'s
+   `findByStreamId`). A tip that has already reached `confirmed` is replayed
+   once as `confirmed`, not once per intermediate state it passed through —
+   so late joiners can't see duplicate/stale events for the same tip.
+2. Subscribes to `shared/realtime/tip-event-bus.ts`, an in-process pub/sub
+   keyed by `streamId`. `modules/tips/services/tip.service.ts` publishes an
+   event on every state transition (`pending` on creation, `submitted` right
+   before the Horizon call, then `confirmed`/`failed`). This is what gives
+   fans and creators the fast "Tip Incoming" → "Confirmed"/"Failed"
+   experience without waiting for the full tip to round-trip: the same
+   `tipId` shows up multiple times as its status changes, and the client
+   reconciles by `tipId` rather than appending a new row each time.
+
+Ordering and duplicate-prevention: every published event carries a
+process-wide monotonically increasing `seq` (sent as the SSE `id:` field),
+so events for a given stream are strictly ordered and a reconnecting client
+could in principle resume with `Last-Event-ID` (not implemented, since the
+backlog replay already covers a fresh reconnect).
+
+The event bus and rate limiters are both plain in-memory state, which is
+enough for a single API instance; a multi-instance deployment would need to
+swap the event bus for something like Redis pub/sub and the rate limiters
+for a shared store, without changing any of the calling code.

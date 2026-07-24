@@ -16,6 +16,9 @@ const envSchema = z.object({
   STELLAR_NETWORK: z.enum(["testnet", "public"]).default("testnet"),
   STELLAR_HORIZON_URL: z.string().default("https://horizon-testnet.stellar.org"),
   STELLAR_FRIENDBOT_URL: z.string().default("https://friendbot.stellar.org"),
+  TIP_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(10_000),
+  TIP_RATE_LIMIT_PER_FAN: z.coerce.number().int().positive().default(5),
+  TIP_RATE_LIMIT_PER_STREAM: z.coerce.number().int().positive().default(30),
 })
 
 export type Env = z.infer<typeof envSchema>

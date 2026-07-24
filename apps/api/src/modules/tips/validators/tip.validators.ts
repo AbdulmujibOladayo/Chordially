@@ -7,6 +7,7 @@ export const createTipSchema = z.object({
     .regex(/^\d+(\.\d{1,7})?$/, "amount must be a positive decimal string")
     .refine((value) => Number(value) > 0, "amount must be greater than zero"),
   idempotencyKey: z.string().uuid("idempotencyKey must be a valid UUID"),
+  streamId: z.string().min(1).optional(),
 })
 
 export type CreateTipRequest = z.infer<typeof createTipSchema>

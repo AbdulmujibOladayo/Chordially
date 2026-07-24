@@ -1,12 +1,20 @@
 import { Prisma } from "@prisma/client"
 import { creatorService } from "../../creators/services/creator.service.js"
+import { streamService } from "../../streams/services/stream.service.js"
 import { walletRepository } from "../../wallet/repositories/wallet.repository.js"
 import { decryptSecret } from "../../wallet/services/wallet-crypto.service.js"
 import { AppError } from "../../../shared/errors/app-error.js"
 import { logger } from "../../../shared/logger/logger.js"
+import { tipEventBus } from "../../../shared/realtime/tip-event-bus.js"
 import { stellarClient } from "../../../shared/stellar/client.js"
 import { tipRepository } from "../repositories/tip.repository.js"
-import { toTipResponse, type CreateTipInput, type Tip, type TipResponse } from "../types/tip.types.js"
+import {
+  toTipResponse,
+  type CreateTipInput,
+  type Tip,
+  type TipResponse,
+  type TipStatus,
+} from "../types/tip.types.js"
 
 const MAX_SUBMISSION_ATTEMPTS = 3
 const RETRY_BASE_DELAY_MS = 200
@@ -23,6 +31,23 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+function publishTipEvent(tip: Tip): void {
+  if (!tip.streamId) {
+    return
+  }
+
+  tipEventBus.publish({
+    streamId: tip.streamId,
+    tipId: tip.id,
+    creatorId: tip.creatorId,
+    fanUserId: tip.fanUserId,
+    amount: tip.amount,
+    status: tip.status as TipStatus,
+    txHash: tip.txHash,
+    failureReason: tip.failureReason,
+  })
+}
+
 async function submitToStellar(tip: Tip): Promise<Tip> {
   const [fanWallet, creator] = await Promise.all([
     walletRepository.findByUserId(tip.fanUserId),
@@ -30,15 +55,20 @@ async function submitToStellar(tip: Tip): Promise<Tip> {
   ])
 
   if (!fanWallet) {
-    return tipRepository.markFailed(tip.id, "Sender has no wallet", tip.attempts)
+    const failed = await tipRepository.markFailed(tip.id, "Sender has no wallet", tip.attempts)
+    publishTipEvent(failed)
+    return failed
   }
 
   const creatorWallet = creator ? await walletRepository.findByUserId(creator.userId) : null
   if (!creatorWallet) {
-    return tipRepository.markFailed(tip.id, "Creator has no wallet", tip.attempts)
+    const failed = await tipRepository.markFailed(tip.id, "Creator has no wallet", tip.attempts)
+    publishTipEvent(failed)
+    return failed
   }
 
-  await tipRepository.updateStatus(tip.id, "submitted")
+  const submitted = await tipRepository.updateStatus(tip.id, "submitted")
+  publishTipEvent(submitted)
   const sourceSecretKey = await decryptSecret(fanWallet)
 
   let attempts = tip.attempts
@@ -54,7 +84,9 @@ async function submitToStellar(tip: Tip): Promise<Tip> {
         amount: tip.amount,
       })
 
-      return tipRepository.markConfirmed(tip.id, result.hash, attempts)
+      const confirmed = await tipRepository.markConfirmed(tip.id, result.hash, attempts)
+      publishTipEvent(confirmed)
+      return confirmed
     } catch (error) {
       lastError = error
 
@@ -74,7 +106,9 @@ async function submitToStellar(tip: Tip): Promise<Tip> {
     }
   }
 
-  return tipRepository.markFailed(tip.id, errorMessage(lastError), attempts)
+  const failed = await tipRepository.markFailed(tip.id, errorMessage(lastError), attempts)
+  publishTipEvent(failed)
+  return failed
 }
 
 export const tipService = {
@@ -91,6 +125,20 @@ export const tipService = {
     const creator = await creatorService.findById(input.creatorId)
     if (!creator) {
       throw new AppError(404, "CREATOR_NOT_FOUND", "Creator profile not found")
+    }
+
+    if (input.streamId) {
+      const stream = await streamService.findById(input.streamId)
+      if (!stream) {
+        throw new AppError(404, "STREAM_NOT_FOUND", "Stream not found")
+      }
+      if (stream.creatorId !== creator.id) {
+        throw new AppError(
+          400,
+          "STREAM_CREATOR_MISMATCH",
+          "This stream does not belong to the given creator"
+        )
+      }
     }
 
     let tip: Tip
@@ -111,6 +159,8 @@ export const tipService = {
       }
       throw error
     }
+
+    publishTipEvent(tip)
 
     const finalTip = await submitToStellar(tip)
     return toTipResponse(finalTip)

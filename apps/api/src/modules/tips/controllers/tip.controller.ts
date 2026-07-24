@@ -1,4 +1,6 @@
 import type { NextFunction, Request, Response } from "express"
+import { AppError } from "../../../shared/errors/app-error.js"
+import { tipFanRateLimiter, tipStreamRateLimiter } from "../services/tip-rate-limiters.js"
 import { tipService } from "../services/tip.service.js"
 import { createTipSchema } from "../validators/tip.validators.js"
 
@@ -7,6 +9,18 @@ export const tipController = {
     try {
       const fanUserId = req.userId!
       const input = createTipSchema.parse(req.body)
+
+      if (!tipFanRateLimiter.consume(fanUserId)) {
+        throw new AppError(429, "RATE_LIMITED", "You're sending tips too quickly. Try again shortly.")
+      }
+
+      if (input.streamId && !tipStreamRateLimiter.consume(input.streamId)) {
+        throw new AppError(
+          429,
+          "STREAM_RATE_LIMITED",
+          "This stream is receiving too many tips right now. Try again shortly."
+        )
+      }
 
       const tip = await tipService.submitTip({ ...input, fanUserId })
 
