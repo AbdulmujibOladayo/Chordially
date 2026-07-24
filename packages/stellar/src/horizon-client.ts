@@ -11,11 +11,13 @@ import {
 } from '@stellar/stellar-sdk'
 import type { StellarPaymentClient } from './interfaces/index.js'
 import type {
+  ListPaymentsOptions,
   StellarAccount,
   StellarAccountReference,
   StellarKeypair,
   StellarNetworkConfig,
   StellarPaymentInput,
+  StellarPaymentRecord,
   StellarPaymentResult,
   StellarSplitPaymentInput,
 } from './types/index.js'
@@ -163,5 +165,44 @@ export class HorizonStellarClient implements StellarPaymentClient {
     }
 
     return false
+  }
+
+  async listSentPayments(
+    reference: StellarAccountReference,
+    options?: ListPaymentsOptions
+  ): Promise<StellarPaymentRecord[]> {
+    const page = await this.server
+      .payments()
+      .forAccount(reference.publicKey)
+      .order('desc')
+      .limit(options?.limit ?? 50)
+      .call()
+
+    const sinceMs = options?.sinceISOTime ? new Date(options.sinceISOTime).getTime() : undefined
+
+    interface PaymentLikeRecord {
+      type: string
+      transaction_hash: string
+      from: string
+      to: string
+      amount: string
+      asset_type: string
+      transaction_successful: boolean
+      created_at: string
+    }
+
+    return (page.records as unknown as PaymentLikeRecord[])
+      .filter((record) => record.type === 'payment')
+      .filter((record) => record.from === reference.publicKey)
+      .filter((record) => sinceMs === undefined || new Date(record.created_at).getTime() >= sinceMs)
+      .map((record) => ({
+        hash: record.transaction_hash,
+        from: record.from,
+        to: record.to,
+        amount: record.amount,
+        assetType: record.asset_type,
+        successful: record.transaction_successful,
+        createdAt: record.created_at,
+      }))
   }
 }

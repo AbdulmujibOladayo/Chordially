@@ -49,3 +49,21 @@ export interface StellarPaymentResult {
   ledger: number
   successful: boolean
 }
+
+export interface StellarPaymentRecord {
+  hash: string
+  from: string
+  to: string
+  /** Decimal string amount of native XLM. */
+  amount: string
+  assetType: string
+  successful: boolean
+  createdAt: string
+}
+
+export interface ListPaymentsOptions {
+  /** Only return payments recorded at or after this ISO-8601 time. */
+  sinceISOTime?: string
+  /** Defaults to 50. */
+  limit?: number
+}

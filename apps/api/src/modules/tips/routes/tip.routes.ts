@@ -5,3 +5,5 @@ import { tipController } from "../controllers/tip.controller.js"
 export const tipsRouter: Router = Router()
 
 tipsRouter.post("/", requireAuth, tipController.create)
+tipsRouter.get("/:id", requireAuth, tipController.getById)
+tipsRouter.post("/:id/retry", requireAuth, tipController.retry)

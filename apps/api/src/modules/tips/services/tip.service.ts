@@ -1,3 +1,4 @@
+import crypto from "node:crypto"
 import { Prisma } from "@prisma/client"
 import { creatorService } from "../../creators/services/creator.service.js"
 import { splitAmount } from "../../streams/services/payout-split.util.js"
@@ -7,6 +8,7 @@ import { walletRepository } from "../../wallet/repositories/wallet.repository.js
 import { decryptSecret } from "../../wallet/services/wallet-crypto.service.js"
 import { AppError } from "../../../shared/errors/app-error.js"
 import { logger } from "../../../shared/logger/logger.js"
+import { metrics } from "../../../shared/metrics/metrics.js"
 import { tipEventBus } from "../../../shared/realtime/tip-event-bus.js"
 import { stellarClient } from "../../../shared/stellar/client.js"
 import { tipPayoutRepository } from "../repositories/tip-payout.repository.js"
@@ -35,7 +37,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-function publishTipEvent(tip: Tip, payouts: TipPayout[]): void {
+export function publishTipEvent(tip: Tip, payouts: TipPayout[]): void {
   if (!tip.streamId) {
     return
   }
@@ -97,8 +99,37 @@ async function resolvePayoutDestinations(
   return destinations
 }
 
+function recordFinalMetrics(
+  tip: Tip,
+  finalStatus: TipStatus,
+  submissionStartedAt: number,
+  isSplit: boolean
+): void {
+  const now = Date.now()
+  const retries = Math.max(0, tip.attempts - 1)
+
+  metrics.incrementCounter("tip_retry_total", retries)
+  metrics.observeLatency("tip_submission_latency_ms", now - submissionStartedAt)
+
+  if (finalStatus === "confirmed") {
+    metrics.incrementCounter("tip_confirmed_total")
+    metrics.observeLatency("tip_confirmation_latency_ms", now - tip.createdAt.getTime())
+  } else if (finalStatus === "failed") {
+    metrics.incrementCounter("tip_failed_total")
+  }
+
+  logger.info("Tip finalized", {
+    tipId: tip.id,
+    status: finalStatus,
+    attempts: tip.attempts,
+    retries,
+    isSplit,
+  })
+}
+
 async function submitToStellar(tip: Tip, initialPayouts: TipPayout[]): Promise<Tip> {
   const isSplit = initialPayouts.length > 0
+  const submissionStartedAt = Date.now()
   const fanWallet = await walletRepository.findByUserId(tip.fanUserId)
 
   if (!fanWallet) {
@@ -108,6 +139,7 @@ async function submitToStellar(tip: Tip, initialPayouts: TipPayout[]): Promise<T
       () => tipRepository.markFailed(tip.id, "Sender has no wallet", tip.attempts),
       () => tipPayoutRepository.markFailedForTip(tip.id, "Sender has no wallet")
     )
+    recordFinalMetrics(failed, "failed", submissionStartedAt, isSplit)
     return failed
   }
 
@@ -124,6 +156,7 @@ async function submitToStellar(tip: Tip, initialPayouts: TipPayout[]): Promise<T
       () => tipRepository.markFailed(tip.id, reason, tip.attempts),
       () => tipPayoutRepository.markFailedForTip(tip.id, reason)
     )
+    recordFinalMetrics(failed, "failed", submissionStartedAt, isSplit)
     return failed
   }
 
@@ -134,6 +167,7 @@ async function submitToStellar(tip: Tip, initialPayouts: TipPayout[]): Promise<T
       () => tipRepository.markFailed(tip.id, "Creator has no wallet", tip.attempts),
       () => Promise.resolve()
     )
+    recordFinalMetrics(failed, "failed", submissionStartedAt, isSplit)
     return failed
   }
 
@@ -167,6 +201,7 @@ async function submitToStellar(tip: Tip, initialPayouts: TipPayout[]): Promise<T
         () => tipRepository.markConfirmed(tip.id, result.hash, attempts),
         () => tipPayoutRepository.markConfirmedForTip(tip.id, result.hash)
       )
+      recordFinalMetrics(confirmed, "confirmed", submissionStartedAt, isSplit)
       return confirmed
     } catch (error) {
       lastError = error
@@ -194,6 +229,7 @@ async function submitToStellar(tip: Tip, initialPayouts: TipPayout[]): Promise<T
     () => tipRepository.markFailed(tip.id, reason, attempts),
     () => tipPayoutRepository.markFailedForTip(tip.id, reason)
   )
+  recordFinalMetrics(failed, "failed", submissionStartedAt, isSplit)
   return failed
 }
 
@@ -274,5 +310,46 @@ export const tipService = {
     const finalTip = await submitToStellar(tip, payouts)
     const finalPayouts = await tipPayoutRepository.findByTipId(tip.id)
     return toTipResponse(finalTip, finalPayouts)
+  },
+
+  async getTipForFan(tipId: string, fanUserId: string): Promise<TipResponse> {
+    const tip = await tipRepository.findById(tipId)
+    if (!tip || tip.fanUserId !== fanUserId) {
+      throw new AppError(404, "TIP_NOT_FOUND", "Tip not found")
+    }
+
+    const payouts = await tipPayoutRepository.findByTipId(tip.id)
+    return toTipResponse(tip, payouts)
+  },
+
+  /**
+   * The dead-letter recovery path: a permanently failed tip can be retried
+   * safely because this creates a brand-new Tip with a fresh idempotency
+   * key (so it's a completely independent payment attempt, never a
+   * resubmission of the original), while `retriedFromTipId` keeps the
+   * failure history visible.
+   */
+  async retryTip(tipId: string, fanUserId: string): Promise<TipResponse> {
+    const original = await tipRepository.findById(tipId)
+    if (!original || original.fanUserId !== fanUserId) {
+      throw new AppError(404, "TIP_NOT_FOUND", "Tip not found")
+    }
+
+    if (original.status !== "failed") {
+      throw new AppError(
+        400,
+        "TIP_NOT_RETRYABLE",
+        "Only a failed tip can be retried"
+      )
+    }
+
+    return this.submitTip({
+      fanUserId,
+      creatorId: original.creatorId,
+      amount: original.amount,
+      streamId: original.streamId ?? undefined,
+      idempotencyKey: crypto.randomUUID(),
+      retriedFromTipId: original.id,
+    })
   },
 }

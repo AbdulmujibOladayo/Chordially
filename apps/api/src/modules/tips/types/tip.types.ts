@@ -15,6 +15,7 @@ export interface Tip {
   attempts: number
   createdAt: Date
   updatedAt: Date
+  retriedFromTipId: string | null
 }
 
 export interface CreateTipInput {
@@ -23,6 +24,7 @@ export interface CreateTipInput {
   amount: string
   idempotencyKey: string
   streamId?: string
+  retriedFromTipId?: string
 }
 
 export interface TipResponse {
@@ -33,6 +35,7 @@ export interface TipResponse {
   status: TipStatus
   txHash: string | null
   failureReason: string | null
+  retriedFromTipId: string | null
   payouts?: TipPayoutResponse[]
 }
 
@@ -45,6 +48,7 @@ export function toTipResponse(tip: Tip, payouts?: TipPayout[]): TipResponse {
     status: tip.status as TipStatus,
     txHash: tip.txHash,
     failureReason: tip.failureReason,
+    retriedFromTipId: tip.retriedFromTipId,
     ...(payouts && payouts.length > 0
       ? { payouts: payouts.map(toTipPayoutResponse) }
       : {}),

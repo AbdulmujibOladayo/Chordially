@@ -89,6 +89,13 @@ model Tip {
 
   payouts TipPayout[]
 
+  // Set when this tip is a fan-initiated retry of a permanently failed tip
+  // (see modules/tips' dead-letter recovery path), so the failure history
+  // stays visible even though the retry is a brand-new tip + idempotency key.
+  retriedFromTipId String?
+  retriedFrom      Tip?    @relation("TipRetries", fields: [retriedFromTipId], references: [id])
+  retries          Tip[]   @relation("TipRetries")
+
   @@unique([fanUserId, idempotencyKey])
 }
 

@@ -69,6 +69,10 @@ src/shared/
 - **`modules/streams`** – creator live sessions and the real-time tip feed
   (`POST /api/streams`, `POST /api/streams/:id/end`,
   `GET /api/streams/:id/tips`). See "Live tip feed: modules/streams" below.
+- **`modules/reconciliation`** – the scheduled worker that recovers tips
+  stuck in `submitted` (`POST /api/reconciliation/run` for manual/demo
+  triggering). See "Observability, reconciliation & dead-letter recovery"
+  below.
 
 ### Adding a new module
 
@@ -255,3 +259,82 @@ just summarizes where the pieces live.
 - The live feed (`GET /api/streams/:id/tips`) includes a `payouts` array on
   every event and backlog entry for a split tip, so viewers see each
   creator's individual share update in lockstep with the overall tip status.
+
+## Observability, reconciliation & dead-letter recovery: modules/reconciliation & modules/tips
+
+Every tip submission is synchronous (see "Tips: modules/tips" above), so in
+the normal case a tip never sits in an intermediate state for long. The gap
+this section closes: a worker process crash (or losing the Horizon response)
+between submitting a transaction and writing "confirmed" locally, which
+would otherwise leave a `Tip` stuck in `submitted` forever with no
+indication of whether the money actually moved.
+
+### Reconciliation worker
+
+`modules/reconciliation/services/reconciliation.service.ts` runs on an
+interval (`RECONCILIATION_INTERVAL_MS`, started from `server.ts`, or
+triggered manually via `POST /api/reconciliation/run`):
+
+1. Finds tips stuck in `submitted` for longer than
+   `RECONCILIATION_STUCK_THRESHOLD_MS` (`tipRepository.findStuckSubmitted`).
+2. For each, resolves the expected destination(s) — the single creator, or
+   every payee for a split tip — and calls `@chordially/stellar`'s
+   `listSentPayments()` to read the fan's actual outgoing payments from
+   Horizon since just before the tip got stuck.
+3. If every expected destination has a matching successful payment sharing
+   the same transaction hash, the tip (and all its payouts, for a split) are
+   confirmed with that hash — recovering exactly the "money moved, but we
+   never found out" case. A split tip is only confirmed when *all* payees
+   match the same hash, since the underlying transaction is atomic; a
+   partial match can't happen for a transaction that actually succeeded.
+4. If nothing matches after `RECONCILIATION_DEAD_LETTER_THRESHOLD_MS`, the
+   tip is dead-lettered (see below). Otherwise it's left alone for the next
+   run.
+
+### Dead-letter recovery
+
+A tip reconciliation gives up on (or a normal submission permanently fails)
+ends up `failed` with a `failureReason` — that's the dead letter. Fans can
+inspect and safely retry it:
+
+- `GET /api/tips/:id` — the tip's current state and failure reason.
+- `POST /api/tips/:id/retry` — only valid when the tip is `failed`. This
+  creates a **brand-new** `Tip` with a fresh idempotency key (never
+  resubmits the original), copying the creator/amount/stream from the
+  original. The new tip's `retriedFromTipId` points back at the original, so
+  the failure history stays visible, while the original row is left
+  untouched as the permanent record of what happened.
+
+### Observability
+
+`shared/metrics/metrics.ts` is a small in-memory counters + latency
+histogram registry (not a full Prometheus client — swapping in a real
+backend later would only mean changing this one module), read via
+`GET /api/metrics`:
+
+- `tip_submission_latency_ms` / `tip_confirmation_latency_ms` — histograms,
+  recorded in `tip.service.ts` at the end of every submission attempt loop
+  and on every confirmation, respectively.
+- `tip_retry_total`, `tip_confirmed_total`, `tip_failed_total` — counters.
+- `reconciliation_runs_total`, `reconciliation_scanned_total`,
+  `reconciliation_repaired_total`, `reconciliation_deadlettered_total` —
+  counters, incremented once per reconciliation run.
+
+Failure rate is derived from the counters (`tip_failed_total /
+(tip_confirmed_total + tip_failed_total)`) rather than tracked as its own
+metric, since it's a pure function of the other two.
+
+Structured JSON logs (`shared/logger/logger.ts`) are emitted for every tip
+finalization, every submission attempt failure, and every reconciliation run
+and per-tip outcome — each with the relevant `tipId`, status, attempt count,
+etc. as structured fields rather than interpolated into the message string.
+
+### End-to-end demo
+
+[`docs/demo-e2e.md`](./demo-e2e.md) documents `pnpm test:e2e:testnet`
+(`apps/api/e2e/`): a real-Stellar-Testnet run of signup → wallet
+provisioning → live tip → split payment → independently-verified ledger
+confirmation → reconciliation of a manufactured stuck payment. It's excluded
+from the normal `pnpm test` run (needs network access and real ledger-close
+time) but exercises the real `HorizonStellarClient` end to end rather than
+the mocked one every other test uses.
